@@ -5,6 +5,7 @@ import (
 	"math/big"
 	"os"
 
+	"github.com/cosmos/cosmos-sdk/crypto/hd"
 	"github.com/cosmos/go-bip39"
 
 	"github.com/ethereum/go-ethereum/accounts/abi/bind"
@@ -12,7 +13,6 @@ import (
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/ethclient"
 	"github.com/joho/godotenv"
-	"github.com/tyler-smith/go-bip32"
 
 	"github.com/vitalis-virtus/polygon_nft/contract/nirgp"
 	"github.com/vitalis-virtus/polygon_nft/pkg/logger"
@@ -65,18 +65,21 @@ func main() {
 
 	// create auth bind with sender private key
 	seed := bip39.NewSeed(os.Getenv("MNEMONIC"), "")
-	// m, _ := hd.ComputeMastersFromSeed(seed)
+	m, cc := hd.ComputeMastersFromSeed(seed)
 
-	pk, err := bip32.NewMasterKey(seed)
+	// derivation path for zero wallet in Metamask account in Ethereum network
+	derivationPath := "m/44'/60'/0'/0/0"
 
-	// converting derivation path from []byte to *ecdsa.PrivateKey
-	privateKeyEDCSA, err := crypto.ToECDSA(pk.Key)
+	privateKeyBytes, err := hd.DerivePrivateKeyForPath(m, cc, derivationPath)
 	if err != nil {
-		log.Fatalf("failed to create privateKeyEDCSA: %V\n", err)
+		log.Fatalf("failed generate privateKeyBytes: %v\n", err)
 	}
 
-	address := crypto.PubkeyToAddress(privateKeyEDCSA.PublicKey)
-	log.Println(address)
+	// converting derivation path from []byte to *ecdsa.PrivateKey
+	privateKeyEDCSA, err := crypto.ToECDSA(privateKeyBytes)
+	if err != nil {
+		log.Fatalf("failed converting derivation path from []byte to *ecdsa.PrivateKey: %v\n", err)
+	}
 
 	auth, err := bind.NewKeyedTransactorWithChainID(privateKeyEDCSA, chainID)
 	if err != nil {
@@ -85,12 +88,12 @@ func main() {
 
 	// set additional data in auth
 	auth.Nonce = big.NewInt(int64(nonce))
-	auth.Value = big.NewInt(1)
+	auth.Value = big.NewInt(0)
 
 	tx, err := instance.SafeMint(auth, addressTo)
 	if err != nil {
 		log.Fatalf("failed to SafeMint: %v\n", err)
 	}
 
-	log.Printf("%#v\n", tx)
+	log.Println(tx.Hash())
 }
